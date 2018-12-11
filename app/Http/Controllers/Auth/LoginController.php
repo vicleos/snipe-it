@@ -17,6 +17,10 @@ use Log;
 use View;
 use PragmaRX\Google2FA\Google2FA;
 use App\Models\LdapAd;
+use ParagonIE\ConstantTime\Base32;
+use Crypt;
+use App\Http\Requests\ValidateSecretRequest;
+use Cache;
 
 /**
  * This controller handles authentication for the user, including local
@@ -125,6 +129,8 @@ class LoginController extends Controller
      */
     public function login(Request $request)
     {
+        //Log::debug(print_r(Setting::getSettings()), true);
+
         if (Setting::getSettings()->login_common_disabled == "1") {
             return view('errors.403');
         }
@@ -144,6 +150,7 @@ class LoginController extends Controller
         }
 
         $user = null;
+
 
         // Should we even check for LDAP users?
         if (Setting::getSettings()->ldap_enabled=='1') {
@@ -189,38 +196,6 @@ class LoginController extends Controller
 
 
     /**
-     * Two factor enrollment page
-     *
-     * @return Redirect
-     */
-    public function getTwoFactorEnroll()
-    {
-
-        if (!Auth::check()) {
-            return redirect()->route('login')->with('error', 'You must be logged in.');
-        }
-
-        $user = Auth::user();
-        $google2fa = app()->make('pragmarx.google2fa');
-
-        if ($user->two_factor_secret=='') {
-            $user->two_factor_secret = $google2fa->generateSecretKey(32);
-            $user->save();
-        }
-
-
-        $google2fa_url = $google2fa->getQRCodeInline(
-            urlencode(Setting::getSettings()->site_name),
-            urlencode($user->username),
-            $user->two_factor_secret
-        );
-
-        return view('auth.two_factor_enroll')->with('google2fa_url', $google2fa_url);
-
-    }
-
-
-    /**
      * Two factor code form page
      *
      * @return Redirect
@@ -231,8 +206,10 @@ class LoginController extends Controller
     }
 
     /**
-     * Two factor code submission
+     * Two factor code submission. Let's set some cookies so we'll know whether
+     * or not we need to redirect the user for additional requests.
      *
+     * @see \App\Http\Middleware\CheckForTwoFactor
      * @return Redirect
      */
     public function postTwoFactorAuth(Request $request)
@@ -243,18 +220,19 @@ class LoginController extends Controller
         }
 
         $user = Auth::user();
-        $secret = $request->get('two_factor_secret');
+        $secret = $request->get('totp');
         $google2fa = app()->make('pragmarx.google2fa');
-        $valid = $google2fa->verifyKey($user->two_factor_secret, $secret);
+        $valid = $google2fa->verifyKey(Crypt::decrypt($user->two_factor_secret), $secret);
 
         if ($valid) {
             $user->two_factor_enrolled = 1;
             $user->save();
             $request->session()->put('2fa_authed', 'true');
-            return redirect()->route('home')->with('success', 'You are logged in!');
+            $request->session()->put('2fa:user:id', $user->id);
+            return redirect()->route('home')->with('success', trans('auth/message.signin.success'));
         }
 
-        return redirect()->route('two-factor')->with('error', 'Invalid two-factor code');
+        return redirect()->back()->with('error', 'Invalid two-factor code');
 
 
     }
@@ -268,6 +246,7 @@ class LoginController extends Controller
     public function logout(Request $request)
     {
         $request->session()->forget('2fa_authed');
+        $request->session()->forget('2fa:user:id');
 
         Auth::logout();
 
@@ -349,5 +328,48 @@ class LoginController extends Controller
     {
         return Session::get('backUrl') ? Session::get('backUrl') :   $this->redirectTo;
     }
+
+    /**
+     * Check for a totp session token
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function getValidateToken()
+    {
+        \Log::debug('Check if the cookie exists');
+        if (session('2fa:user:id')) {
+            \Log::debug('2fa:user:id session exists');
+            \Log::debug('Redirecting to '.$this->redirectTo);
+            return redirect()->intended($this->redirectTo);
+        }
+        \Log::error('2fa:user:id session does not exist');
+        //return redirect('login');
+        return view('auth.two_factor');
+    }
+
+    /**
+     *
+     * @param  App\Http\Requests\ValidateSecretRequest $request
+     * @return \Illuminate\Http\Response
+     */
+    public function postValidateToken(ValidateSecretRequest $request)
+    {
+
+        \Log::error('Checking for cache key...');
+        // get user id and create cache key
+        $userId = $request->session()->pull('2fa:user:id');
+        \Log::error('User ID: '.$userId);
+        $key    = $userId . ':' . $request->totp;
+
+        //use cache to store token to blacklist
+        Cache::add($key, true, 4);
+
+        //login and redirect user
+        //Auth::loginUsingId($userId);
+
+        //return redirect()->intended($this->redirectTo);
+        return redirect()->intended($this->redirectTo);
+    }
+
 
 }

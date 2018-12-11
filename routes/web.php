@@ -404,29 +404,46 @@ Route::group([ 'prefix' => 'setup', 'middleware' => 'web'], function () {
 
 });
 
-Route::get(
-    'two-factor-enroll',
-    [
-        'as' => 'two-factor-enroll',
-        'middleware' => ['web'],
-        'uses' => 'Auth\LoginController@getTwoFactorEnroll' ]
-);
+/**
+ * Google 2FA routes
+ */
 
-Route::get(
-    'two-factor',
-    [
-        'as' => 'two-factor',
-        'middleware' => ['web'],
-        'uses' => 'Auth\LoginController@getTwoFactorAuth' ]
-);
 
-Route::post(
-    'two-factor',
-    [
-        'as' => 'two-factor',
-        'middleware' => ['web'],
-        'uses' => 'Auth\LoginController@postTwoFactorAuth' ]
-);
+Route::middleware('web', 'throttle:500,1')->group(function () {
+    Route::get(
+        'two-factor-enroll',
+        [
+            'as' => 'two-factor-enroll',
+            //'middleware' => ['auth'],
+            'uses' => 'Auth\Google2FAController@generateTwoFactorQR'
+        ]
+    );
+
+
+    Route::get(
+        'two-factor',
+        [
+            'as' => 'enter-two-factor',
+            //'middleware' => ['guest'],
+            'uses' => 'Auth\LoginController@getValidateToken'
+        ]
+    );
+
+
+    Route::post(
+        'two-factor',
+        [
+            'as' => 'validate-two-factor',
+            'uses' => 'Auth\LoginController@postTwoFactorAuth'
+        ]
+    );
+
+});
+
+
+
+
+
 
 Route::get(
     '/',

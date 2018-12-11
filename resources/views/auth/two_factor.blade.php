@@ -29,9 +29,9 @@
                                     <input type="hidden" name="_token" value="{{ csrf_token() }}" />
 
                                     <fieldset>
-                                        <div class="form-group{{ $errors->has('secret') ? ' has-error' : '' }}">
-                                            <input class="form-control" placeholder="{{ trans('admin/settings/general.two_factor_secret')  }}" name="two_factor_secret" type="text" autofocus>
-                                            {!! $errors->first('two_factor_secret', '<span class="alert-msg"><i class="fa fa-times"></i> :message</span>') !!}
+                                        <div class="form-group{{ $errors->has('totp') ? ' has-error' : '' }}">
+                                            <input class="form-control" placeholder="{{ trans('admin/settings/general.two_factor_secret')  }}" name="totp" type="number" autofocus>
+                                            {!! $errors->first('totp', '<span class="alert-msg"><i class="fa fa-times"></i> :message</span>') !!}
                                         </div>
                                     </fieldset>
                                 </div>

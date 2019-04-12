@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Helpers\Helper;
 use App\Models\Company;
 use App\Http\Transformers\SelectlistTransformer;
+use Illuminate\Support\Facades\Storage;
 
 class CompaniesController extends Controller
 {
